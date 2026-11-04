@@ -27,7 +27,7 @@ def _secret_key():
     return open(path).read().strip()
 
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder=os.path.join(BASE, "web/"))
 app.config.update(
     SECRET_KEY=_secret_key(),
     SESSION_COOKIE_HTTPONLY=True,
