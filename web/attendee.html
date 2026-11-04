@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;600;700&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<title>Events · Gatehouse</title>
+</head>
+<body>
+<aside>
+  <div class="brand"><b>Gatehouse</b></div>
+  <div class="seg" role="tablist" aria-label="Sections">
+    <button role="tab" data-view="events" aria-selected="true">Events</button>
+    <button role="tab" data-view="tickets" aria-selected="false">My tickets</button>
+  </div>
+  <div id="list" role="list"></div>
+  <div class="me" id="me"></div>
+</aside>
+<main id="main"></main>
+<script src="/static/common.js"></script>
+<script>
+window.ME = {{ me|tojson }};
+const S = { events: [], selId: null, qty: 1, busy: false, notice: '', receipt: null, view: 'events', sig: '' };
+const sel = () => S.events.find(e => e.id === S.selId);
+
+function renderList() {
+  const el = $('#list');
+  el.innerHTML = S.events.length ? S.events.map(e => rowHTML(e, S.selId, false)).join('')
+    : '<p class="empty">No events on sale right now. Check back soon.</p>';
+}
+$('#list').addEventListener('click', e => { const b = e.target.closest('.row'); if (b) select(+b.dataset.id); });
+
+function setView(v) {
+  S.view = v;
+  document.querySelectorAll('aside .seg button').forEach(b => b.setAttribute('aria-selected', b.dataset.view === v));
+  $('#list').hidden = v !== 'events';
+  renderMain();
+}
+document.querySelectorAll('aside .seg button').forEach(b => b.onclick = () => setView(b.dataset.view));
+
+function select(id) {
+  S.selId = id; S.qty = 1; S.notice = ''; S.receipt = null; S.sig = ''; location.hash = id;
+  if (S.view !== 'events') return setView('events');
+  renderList(); renderMain();
+}
+
+function renderMain() { S.view === 'tickets' ? renderTickets() : renderDetail(); }
+
+function renderDetail() {
+  const e = sel(), m = $('#main');
+  if (!e) { m.innerHTML = '<h1>Nothing on sale yet</h1><p class="venue">When organizers publish events, they show up here.</p>'; return; }
+  resetLive();
+  m.innerHTML = `<h1>${esc(e.name)}</h1>
+    <p class="venue">${esc([e.venue, dateLabel(e.starts_at)].filter(Boolean).join(', ') || 'Venue to be announced')}</p>
+    <div class="grid"><section>${liveHTML()}${e.description ? `<p class="desc">${esc(e.description)}</p>` : ''}</section><div id="stubHost"></div></div>`;
+  paintLive(e); renderStub();
+}
+
+function renderStub(keepFocus) {
+  const e = sel(), host = $('#stubHost'); if (!host) return;
+  if (S.receipt) {
+    const r = S.receipt;
+    host.innerHTML = `<div class="stub"><div class="top"><p>Booked</p><strong>${esc(e.name)}</strong></div>
+      <div class="done"><h3>You're in, ${esc(ME.name.split(' ')[0])}.</h3><p>${r.codes.length} ticket${r.codes.length > 1 ? 's' : ''}, ${inr(r.total)}</p>
+      <ul class="codes">${r.codes.map(c => `<li>${c}</li>`).join('')}</ul>
+      <div class="acts"><button class="btn" id="mine">View my tickets</button>${e.remaining ? '<button class="btn ghost" id="again">Book more</button>' : ''}</div></div></div>`;
+    $('#mine').onclick = () => setView('tickets');
+    if ($('#again')) $('#again').onclick = () => { S.receipt = null; S.qty = 1; S.sig = ''; renderStub(); };
+    return;
+  }
+  const off = e.remaining === 0, maxQ = Math.min(e.max_per_order, e.remaining);
+  S.qty = Math.max(1, Math.min(S.qty, maxQ || 1));
+  S.sig = [e.remaining, e.price_cents, S.qty, S.notice].join('|');
+  host.innerHTML = `<div class="stub"><div class="top"><p>Admit</p><strong>${esc(e.name)}</strong></div>
+    <form id="bookForm" novalidate>
+      ${S.notice ? `<div class="notice" role="alert">${esc(S.notice)}</div>` : ''}
+      <div class="who"><span>Booking as</span><b>${esc(ME.name)}</b><span>${esc(ME.email)}</span></div>
+      <div class="field"><label id="qL">Tickets</label>
+        <div class="qty" role="group" aria-labelledby="qL">
+          <button type="button" id="qm" aria-label="Fewer tickets" ${S.qty <= 1 || off ? 'disabled' : ''}>−</button>
+          <output id="qv" class="num">${S.qty}</output>
+          <button type="button" id="qp" aria-label="More tickets" ${S.qty >= maxQ || off ? 'disabled' : ''}>+</button>
+        </div></div>
+      <div class="sum"><span>Total</span><b class="num">${off ? '—' : inr(e.totals[S.qty - 1])}</b></div>
+      <button class="btn" id="bookBtn" ${off ? 'disabled' : ''}>${off ? 'Sold out' : 'Book ' + S.qty + ' ticket' + (S.qty > 1 ? 's' : '')}</button>
+    </form></div>`;
+  const step = (d, id) => () => { S.qty += d; S.notice = ''; renderStub(); ($('#' + id).disabled ? $('#bookBtn') : $('#' + id)).focus(); };
+  $('#qm').onclick = step(-1, 'qm'); $('#qp').onclick = step(1, 'qp');
+  $('#bookForm').addEventListener('submit', submit);
+}
+
+async function submit(ev) {
+  ev.preventDefault(); if (S.busy) return;
+  const e = sel(); S.busy = true; const btn = $('#bookBtn'); btn.disabled = true; btn.textContent = 'Booking…';
+  try {
+    const r = await api(`/api/events/${e.id}/book`, { method: 'POST', body: { quantity: S.qty, expected_total_cents: e.totals[S.qty - 1] } });
+    upsert(r.event); S.receipt = { codes: r.codes, total: r.total_cents }; S.notice = '';
+  } catch (err) {
+    if (err.event) upsert(err.event);
+    if (err.error === 'price_changed') S.notice = `The price changed to ${inr(err.new_total_cents)} for ${S.qty} ticket${S.qty > 1 ? 's' : ''}. Review the total and book again to confirm.`;
+    else if (err.error === 'sold_out') S.notice = 'Someone else took the last ticket first. This event is sold out.';
+    else if (err.error === 'insufficient') S.notice = err.message + ' Adjust the quantity and try again.';
+    else if (err.error === 'not_on_sale') { S.notice = err.message; await refresh(); }
+    else toast(err.message || 'Booking failed. Try again.', true);
+  } finally { S.busy = false; }
+  renderList(); if (sel()) { paintLive(sel()); renderStub(); }
+}
+
+async function renderTickets() {
+  const m = $('#main'); m.innerHTML = '<h1>My tickets</h1><p class="venue">Loading…</p>';
+  try {
+    const rows = await api('/api/my/tickets');
+    if (S.view !== 'tickets') return;
+    m.innerHTML = '<h1>My tickets</h1>' + (rows.length
+      ? `<p class="venue">Show a code at the door.</p><div class="orders">${rows.map(o => `<article class="order">
+          <h3>${esc(o.event_name)}</h3><p class="meta">${esc([o.venue, dateLabel(o.starts_at)].filter(Boolean).join(', ') || 'Venue to be announced')}</p>
+          <ul class="codes">${o.codes.map(c => `<li>${c}</li>`).join('')}</ul>
+          <div class="foot"><span>${o.quantity} ticket${o.quantity > 1 ? 's' : ''}, ${inr(o.total_cents)}</span><span>Booked ${when(o.created_at)}</span></div></article>`).join('')}</div>`
+      : '<p class="venue">You have no tickets yet. Pick an event and book your first.</p><p style="margin-top:18px"><button class="btn" id="browse">Browse events</button></p>');
+    if ($('#browse')) $('#browse').onclick = () => setView('events');
+  } catch (x) { m.innerHTML = '<h1>My tickets</h1><p class="venue">Could not load your tickets. Try again in a moment.</p>'; }
+}
+
+function upsert(ev) { const i = S.events.findIndex(x => x.id === ev.id); if (i >= 0) S.events[i] = ev; else S.events.unshift(ev); }
+
+async function refresh(first) {
+  try {
+    S.events = await api('/api/events');
+    if (first) {
+      const h = +location.hash.slice(1);
+      S.selId = S.events.some(e => e.id === h) ? h : (S.events[0]?.id ?? null);
+      renderList(); renderMain(); return;
+    }
+    if (!sel()) { S.selId = S.events[0]?.id ?? null; S.receipt = null; renderList(); if (S.view === 'events') renderDetail(); return; }
+    renderList();
+    if (S.view === 'events' && !S.busy) {
+      const e = sel(); paintLive(e);
+      if (!S.receipt && S.sig !== [e.remaining, e.price_cents, S.qty, S.notice].join('|')) renderStub();
+    }
+  } catch { /* transient failure: keep last good state */ }
+}
+
+mountMe(ME);
+refresh(true);
+setInterval(() => { if (!document.hidden) refresh(); }, 4000);
+</script>
+</body></html>

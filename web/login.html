@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;600;700&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<title>Sign in · Gatehouse</title>
+</head>
+<body class="auth">
+<div class="brand" style="padding:0;justify-content:center"><b>Gatehouse</b></div>
+<div class="roles" id="roles" role="tablist" aria-label="Account type" data-pos="0">
+  <button role="tab" data-role="attendee"><b>Attendee</b><span>Buy tickets</span></button>
+  <button role="tab" data-role="organizer"><b>Organizer</b><span>Run events</span></button>
+</div>
+<div id="card"></div>
+<script src="/static/common.js"></script>
+<script>
+const ORG_CODE = {{ 'true' if org_code_required else 'false' }};
+const S = { role: 'attendee', mode: 'in', busy: false, email: '' };
+
+function render() {
+  const org = S.role === 'organizer', up = S.mode === 'up';
+  $('#roles').dataset.pos = org ? 1 : 0;
+  document.querySelectorAll('.roles button').forEach(b => b.setAttribute('aria-selected', b.dataset.role === S.role));
+  $('#card').innerHTML = `<div class="stub"><div class="top"><p>${org ? 'For event organizers' : 'For ticket buyers'}</p><strong>${up ? 'Create account' : 'Sign in'}</strong></div>
+    <form id="f" novalidate>
+      ${up ? '<div class="field"><label for="n">Full name</label><input id="n" type="text" autocomplete="name" maxlength="80"></div>' : ''}
+      <div class="field"><label for="e">Email</label><input id="e" type="email" autocomplete="email"></div>
+      <div class="field"><label for="p">Password</label><div class="pw"><input id="p" type="password" autocomplete="${up ? 'new-password' : 'current-password'}"><button type="button" id="tg" aria-pressed="false" aria-label="Show password">Show</button></div>${up ? '<div class="hint">At least 8 characters.</div>' : ''}</div>
+      ${up && org && ORG_CODE ? '<div class="field"><label for="c">Organizer access code</label><input id="c" type="text" autocomplete="off"></div>' : ''}
+      <div class="err" id="err" role="alert"></div>
+      <button class="btn lg" id="go">${up ? 'Create account' : 'Sign in'}</button>
+    </form></div>
+    <div class="swap"><p>${up ? 'Already have an account?' : 'New here?'}</p><button class="btn ghost lg" id="swap">${up ? 'Sign in instead' : 'Create an account'}</button></div>`;
+  $('#e').value = S.email;
+  $('#e').addEventListener('input', e => S.email = e.target.value);
+  $('#swap').onclick = () => { S.mode = up ? 'in' : 'up'; render(); $(S.mode === 'up' ? '#n' : '#e').focus(); };
+  $('#f').addEventListener('submit', submit);
+  $('#tg').onclick = () => { const p = $('#p'), show = p.type === 'password'; p.type = show ? 'text' : 'password'; $('#tg').textContent = show ? 'Hide' : 'Show'; $('#tg').setAttribute('aria-pressed', show); $('#tg').setAttribute('aria-label', show ? 'Hide password' : 'Show password'); };
+}
+
+async function submit(ev) {
+  ev.preventDefault(); if (S.busy) return;
+  const up = S.mode === 'up', err = $('#err'), btn = $('#go');
+  const body = { role: S.role, email: $('#e').value.trim(), password: $('#p').value };
+  if (up) { body.name = $('#n').value.trim(); if ($('#c')) body.organizer_code = $('#c').value; }
+  if (up && !body.name) return err.textContent = 'Enter your full name.';
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(body.email)) return err.textContent = 'Enter a valid email address.';
+  if (!body.password) return err.textContent = 'Enter your password.';
+  if (up && body.password.length < 8) return err.textContent = 'Password must be at least 8 characters.';
+  err.textContent = ''; S.busy = true; btn.disabled = true; btn.classList.add('busy'); btn.textContent = up ? 'Creating account…' : 'Signing in…';
+  try {
+    const r = await api(up ? '/api/auth/register' : '/api/auth/login', { method: 'POST', body });
+    location.href = r.redirect;
+  } catch (x) {
+    err.textContent = x.message || 'Something went wrong. Try again.';
+    btn.disabled = false; btn.classList.remove('busy'); btn.textContent = up ? 'Create account' : 'Sign in'; S.busy = false;
+    $('#p').value = ''; $('#p').focus();
+  }
+}
+
+document.querySelectorAll('.roles button').forEach(b => b.onclick = () => { S.role = b.dataset.role; render(); });
+render();
+</script>
+</body></html>
