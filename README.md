@@ -9,7 +9,7 @@ Layout (keep it exactly like this):
     app.py
     tests.py
     requirements.txt
-    templates/  login.html  attendee.html  organizer.html
+    web/  login.html  attendee.html  organizer.html
     static/     style.css   common.js
 
 Optional environment variables:
