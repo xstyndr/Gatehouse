@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gatehouse demo</title>
+<meta name="description" content="Event ticketing demo with dynamic surge pricing. Runs entirely in your browser.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;600;700&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<aside>
+  <div class="brand"><b>Gatehouse</b><button class="btn" id="newBtn" hidden>New event</button></div>
+  <div class="seg" id="roleSeg" role="tablist" aria-label="View as">
+    <button role="tab" data-role="attendee">Attendee</button>
+    <button role="tab" data-role="organizer">Organizer</button>
+  </div>
+  <div class="seg" id="subSeg" role="tablist" aria-label="Sections" hidden>
+    <button role="tab" data-view="events">Events</button>
+    <button role="tab" data-view="tickets">My tickets</button>
+  </div>
+  <div id="list" role="list"></div>
+  <div class="me"><div><b>Demo mode</b><span>Saved in this browser only</span></div><button class="btn ghost" id="resetBtn">Reset</button></div>
+</aside>
+<main id="main"></main>
+
+<dialog id="dlg">
+  <form id="createForm" novalidate>
+    <h3>New event</h3>
+    <div class="field"><label for="cName">Event name</label><input id="cName" type="text" maxlength="120"></div>
+    <div class="field"><label for="cVenue">Venue <span style="font-weight:400;color:var(--mute)">(optional)</span></label><input id="cVenue" type="text" maxlength="120"></div>
+    <div class="two">
+      <div class="field"><label for="cPrice">Base price (₹)</label><input id="cPrice" type="number" min="1" step="any" inputmode="decimal"></div>
+      <div class="field"><label for="cCap">Max capacity</label><input id="cCap" type="number" min="1" max="100000" step="1" inputmode="numeric"></div>
+    </div>
+    <div class="preview" id="cPreview" aria-live="polite"></div>
+    <p class="hint" style="margin:-8px 0 14px">Saved as a draft. Publish it when you're ready to sell.</p>
+    <div class="err" id="cErr" role="alert"></div>
+    <div class="actions"><button type="button" class="btn ghost" id="cCancel">Cancel</button><button class="btn" id="cSubmit">Create draft</button></div>
+  </form>
+</dialog>
+
+<script src="common.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
